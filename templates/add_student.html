@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Add Student</title>
+</head>
+<body>
+  <h1>Add student</h1>
+  <video id="video" autoplay></video>
+  <button onclick="captureImage()">Capture</button>
+    <h1 id="status"></h1>
+    <h1 id="name"></h1>
+    <h1 id="score"></h1>
+  <script>
+    const video = document.getElementById('video');
+    
+    // Prompt for camera access and stream to video element
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => video.srcObject = stream)
+      .catch(err => console.error("Error accessing webcam: ", err));
+
+    function captureImage() {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+      const imageData = canvas.toDataURL('image/jpeg');  // Base64 encoded image
+      
+      // Send image to backend
+      fetch('/capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageData })
+      })
+      .then(response => response.json())
+            .then(data => {
+                document.getElementById('status').innerText = `Status: ${data.status}`;
+                document.getElementById('name').innerText = `Name: ${data.name}`;
+                document.getElementById('score').innerText = 
+                    `Similarity Score: ${data.similarity_score.toFixed(2)}`;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('status').innerText = 'Error processing image';
+                timer.style.display = 'none';
+                isProcessing = false;
+            });
+    }
+  </script>
+</body>
+</html>

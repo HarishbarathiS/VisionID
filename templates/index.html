@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Recognition</title>
+    <style>
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 20px;
+        }
+        #video {
+            border: 2px solid #333;
+            border-radius: 8px;
+        }
+        .timer {
+            font-size: 48px;
+            font-weight: bold;
+            color: #ff0000;
+            display: none;
+        }
+        .status-container {
+            margin-top: 20px;
+        }
+        .status-container p {
+            margin: 5px 0;
+            font-size: 16px;
+            border: 2px solid #333;
+            border-radius: 8px;
+        }
+        #b{
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        button {
+            outline: none;
+            cursor: pointer;
+            border: none;
+            padding: 0.9rem 2rem;
+            margin: 0;
+            font-family: inherit;
+            font-size: inherit;
+            position: relative;
+            display: inline-block;
+            letter-spacing: 0.05rem;
+            font-weight: 700;
+            font-size: 17px;
+            border-radius: 500px;
+            overflow: hidden;
+            color: ghostwhite;
+        }
+
+        button span {
+            position: relative;
+            z-index: 10;
+            transition: color 0.4s;
+        }
+
+        button::before,
+        button::after {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        button::before {
+            content: "";
+            background: #000;
+            width: 120%;
+            left: -10%;
+            transform: skew(30deg);
+            transition: transform 0.4s cubic-bezier(0.3, 1, 0.8, 1);
+        }
+
+        /* Default background color */
+        button.no {
+            background: #f23131; /* Green for "No" button */
+        }
+
+        button.yes {
+            background: #28d72e; /* Green for "Yes" button */
+        }
+
+        /* Hover styles */
+        button:hover {
+            color: black; /* Text color change on hover */
+        }
+
+        button.no:hover {
+            background: #f23131; /* Red for "No" on hover */
+        }
+
+        button.yes:hover {
+            background: #28d72e; /* Green for "Yes" on hover */
+        }
+
+        button:hover::before {
+            transform: translate3d(100%, 0, 0);
+        }
+
+        .button-container {
+            display: flex; /* Arrange items in a row */
+            gap: 80px; /* Add spacing between buttons */
+            margin-top: 15px; /* Add some space above the buttons */
+            display: none; /* Initially hide the buttons */
+        }
+
+        .h1-class {
+            display: none;
+        }
+        
+    </style>
+</head>
+<body>
+    <div class="container">
+        <video id="video" width="640" height="480" autoplay></video>
+        <div id="timer" class="timer">3</div>
+            <div id="b">
+                <h1 id="status">Searching for person</h1>
+                <h1 id="name"></h1>
+                <h1 id="score"></h1>
+        </div>
+        <div>
+            <h1 class="h1-class">Correctly detected?</h1>
+            <div class="button-container">
+                <button class="yes"><span>Yes</span></button>
+                <button class="no"><span>No</span></button>
+            </div>
+        </div>
+        
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const timer = document.getElementById('timer');
+        const buttonContainer = document.querySelector('.button-container');
+        const h1class = document.querySelector(".h1-class");
+        let isProcessing = false;
+        let faceDetectionInterval;
+        let countdownInterval;
+
+        // Start webcam
+        async function startWebcam() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: 640,
+                        height: 480,
+                        facingMode: 'user'
+                    } 
+                });
+                video.srcObject = stream;
+                // Start checking for faces once video is playing
+                video.onplay = () => {
+                    startFaceDetection();
+                };
+            } catch (err) {
+                console.error("Error accessing webcam: ", err);
+                document.getElementById('status').innerText = 'Error: Cannot access webcam';
+            }
+        }
+
+        // Function to check for faces
+        function checkForFace() {
+            if (!isProcessing) {
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0);
+                
+                // Send frame to backend to check for faces
+                canvas.toBlob((blob) => {
+                    const formData = new FormData();
+                    formData.append('image', blob);
+                    
+                    fetch('/check_face', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.face_detected && !isProcessing) {
+                            startCountdown();
+                        }
+                    })
+                    .catch(error => console.error('Error:', error));
+                }, 'image/jpeg');
+            }
+        }
+
+        // Start continuous face detection
+        function startFaceDetection() {
+            faceDetectionInterval = setInterval(checkForFace, 5000); // Check every 5000ms
+        }
+
+        // Function to start countdown
+        function startCountdown() {
+            isProcessing = true;
+            let count = 3;
+            clearResults();
+            
+            timer.style.display = 'block';
+            timer.textContent = count;
+
+            countdownInterval = setInterval(() => {
+                count--;
+                timer.textContent = count;
+                
+                if (count === 0) {
+                    clearInterval(countdownInterval);
+                    captureAndClassify();
+                }
+            }, 1000);
+        }
+
+        // Function to show buttons after countdown
+        function showButtons() {
+            h1class.style.display = "flex"
+            buttonContainer.style.display = 'flex'; // Show buttons
+        }
+
+        // Function to clear results 
+        function clearResults() {
+            document.getElementById('status').innerText = "Processing in...";
+            document.getElementById('name').innerText = "";
+            document.getElementById('score').innerText = "";
+        }
+
+        function searchingMessage() {
+            document.getElementById('status').innerText = "Searching for person";
+            document.getElementById('name').innerText = "";
+            document.getElementById('score').innerText = "";
+        }
+
+        // Function to capture and classify
+        function captureAndClassify() {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            
+            // Convert to base64
+            const imageData = canvas.toDataURL('image/jpeg');
+
+            // Send to backend
+            fetch('/capture', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: imageData })
+            })
+            .then(response => response.json())
+            .then(data => {
+                showButtons();
+                document.getElementById('status').innerText = `Status: ${data.status}`;
+                document.getElementById('name').innerText = `Name: ${data.name}`;
+                document.getElementById('score').innerText = 
+                    `Similarity Score: ${data.similarity_score.toFixed(2)}`;
+                
+                // Reset processing flag and hide timer
+                timer.style.display = 'none';
+                isProcessing = true;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('status').innerText = 'Error processing image';
+                timer.style.display = 'none';
+                isProcessing = true;
+            });
+        }
+
+        // Event listener for button clicks
+        document.querySelector('.yes').addEventListener('click', () => {
+            // Send to backend
+            const name = document.getElementById('name').innerText.split(': ')[1];
+            const score = parseFloat(document.getElementById('score').innerText.split(': ')[1]);
+    
+            fetch('/result', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    result: "yes",
+                    recognized_name: name,
+                    confidence_score: score,
+                    timestamp: new Date().toISOString()
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Success:', data);
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+            });
+
+            buttonContainer.style.display = 'none'; // Hide buttons after click
+            h1class.style.display = 'none';
+            searchingMessage();
+            isProcessing = false;
+        });
+
+        document.querySelector('.no').addEventListener('click', () => {
+            // Send to backend
+            const name = document.getElementById('name').innerText.split(': ')[1];
+            const score = parseFloat(document.getElementById('score').innerText.split(': ')[1]);
+
+
+            fetch('/result', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    result: "no",
+                    recognized_name: name,
+                    confidence_score: score,
+                    timestamp: new Date().toISOString()
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Success:', data);
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+            });
+            buttonContainer.style.display = 'none'; // Hide buttons after click
+            h1class.style.display = 'none';
+            searchingMessage();
+            isProcessing = false;
+        });
+
+        // Start webcam when page loads
+        startWebcam();
+    </script>
+</body>
+</html>
